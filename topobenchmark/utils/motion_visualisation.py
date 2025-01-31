@@ -70,10 +70,11 @@ class MotionVisualizationCallback(Callback):
                 "r-",
             )
 
-    def on_train_epoch_end(self, trainer, pl_module):
+    def on_train_epoch_start(self, trainer, pl_module):
         """Visualize predictions at the end of each epoch."""
         if not trainer.sanity_checking:
             print("WWOOOOOO")
+            motion_outputs = []
             # Get a sample from validation set
             batch = next(iter(trainer.train_dataloader))
 
@@ -84,9 +85,28 @@ class MotionVisualizationCallback(Callback):
             batch.x_0 = batch.x.to(pl_module.device)
 
             # Get predictions
+            motion_input = batch.x_0.clone() # (844800, 1) 256*50*22*3
+
             pl_module.eval()
-            with torch.no_grad():
-                outputs = pl_module(batch)
+            for _ in range(5):
+                batch_ = batch.clone()
+                batch_.x_0 = motion_input
+                
+                with torch.no_grad():
+                    outputs = pl_module(batch_)
+                
+                model_output = outputs["x_0"].reshape(
+                    256, 50, 22, 3
+                )  # [B, T, J, 3]
+                output = model_output[:, :10, :, :]
+                motion_outputs.append(output)
+
+                motion_input = motion_input.reshape(256, 50, 22, 3)
+                    
+                motion_input = torch.cat([motion_input[:, 10:], output], axis=1)
+                motion_input = motion_input.reshape(256*50*22*3, 1)
+
+
             pl_module.train()
 
             # outputs["labels"].shape = [844800]
@@ -94,7 +114,7 @@ class MotionVisualizationCallback(Callback):
                 256, 50, 22, 3
             )  # [B, T, J, 3]
             # outputs["x_0"].shape = [844800, 1]
-            model_output = outputs["x_0"].reshape(
+            model_output = torch.cat(motion_outputs, axis=1).reshape(
                 256, 50, 22, 3
             )  # [B, T, J, 3]
 

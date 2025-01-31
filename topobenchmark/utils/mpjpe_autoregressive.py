@@ -34,6 +34,8 @@ class MotionEvaluationCallback(Callback):
         for _ in range(num_step):
             batch_ = batch.clone()
             batch_.x_0 = motion_input
+            batch_.x = motion_input
+
 
             # Get predictions
             with torch.no_grad():

@@ -19,9 +19,14 @@ from topobenchmark.utils.utils import (
 from topobenchmark.utils.motion_visualisation import (
     MotionVisualizationCallback,
 )
+from topobenchmark.utils.mpjpe_autoregressive import (
+    MotionEvaluationCallback,
+)
+
 
 __all__ = [
     "MotionVisualizationCallback",
+    "MotionEvaluationCallback",
     "RankedLogger",
     "enforce_tags",
     "extras",

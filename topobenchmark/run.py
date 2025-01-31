@@ -15,6 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 from topobenchmark.data.preprocessor import OnDiskPreProcessor, PreProcessor
 from topobenchmark.dataloader import OnDiskTBDataloader, TBDataloader
 from topobenchmark.utils import (
+    MotionEvaluationCallback,
     MotionVisualizationCallback,
     RankedLogger,
     extras,
@@ -209,6 +210,7 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
     log.info("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))
     # Add visualization callback
+    callbacks.append(MotionEvaluationCallback())
     callbacks.append(MotionVisualizationCallback(num_samples=1))
 
     log.info("Instantiating loggers...")

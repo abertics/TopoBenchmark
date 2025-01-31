@@ -1,16 +1,10 @@
-"""Some models implemented for TopoBenchmarkX."""
+"""Some models implemented for TopoBenchmark."""
 
 from .cell import (
     CCCN,
 )
 from .combinatorial import TopoTune, TopoTune_OneHasse
-from .graph import (
-    GraphMLP,
-    IdentityGAT,
-    IdentityGCN,
-    IdentityGIN,
-    IdentitySAGE,
-)
+from .graph import IdentityGAT, IdentityGCN, IdentityGIN, IdentitySAGE, GCNext
 from .hypergraph import EDGNN
 from .simplicial import SCCNNCustom
 
@@ -25,4 +19,9 @@ __all__ = [
     "SCCNNCustom",
     "TopoTune",
     "TopoTune_OneHasse",
+    "IdentityGCN",
+    "IdentityGIN",
+    "IdentityGAT",
+    "IdentitySAGE",
+    "GCNext",
 ]

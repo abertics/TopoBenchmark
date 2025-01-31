@@ -15,6 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 from topobenchmark.data.preprocessor import OnDiskPreProcessor, PreProcessor
 from topobenchmark.dataloader import OnDiskTBDataloader, TBDataloader
 from topobenchmark.utils import (
+    MotionVisualizationCallback,
     RankedLogger,
     extras,
     get_metric_value,
@@ -136,34 +137,51 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
     log.info("Instantiating preprocessor...")
     transform_config = cfg.get("transforms", None)
 
-    # Different processing if OnDisk v InMemory
-    # OnDisk splits indices into train/val/test, while InMemory instantiates new datasets
-    if cfg.dataset.loader.parameters.process_on_disk:
+    if cfg.dataset.loader.parameters.data_name == "H36MDataset":
         preprocessor = OnDiskPreProcessor(
             dataset, dataset_dir, transform_config
         )
 
-        print("Splitting dataset into train/val/test (on disk)...")
-        train_indices, val_indices, test_indices = (
-            preprocessor.load_dataset_split_indices(cfg.dataset.split_params)
-        )
-
-        # Prepare datamodule
-        # TODO: What about if we need to preprocess ondisk but then want to load the splits inmemory (like w/ Human3.6M)?
-        log.info("Instantiating datamodule...")
-        if cfg.dataset.parameters.task_level in ["node", "graph"]:
-            datamodule = OnDiskTBDataloader(
-                dataset=dataset,
-                train_indices=train_indices,
-                val_indices=val_indices,
-                test_indices=test_indices,
-                **cfg.dataset.get("dataloader_params", {}),
+        if True:  # cfg.dataset.loader.parameters.keep_splits_on_disk:
+            print("Splitting dataset into train/val/test (on disk)...")
+            train_indices, val_indices, test_indices = (
+                preprocessor.load_dataset_split_indices(
+                    cfg.dataset.split_params
+                )
             )
+            # Prepare datamodule
+            log.info("Instantiating datamodule...")
+            if cfg.dataset.parameters.task_level in ["node", "graph"]:
+                datamodule = OnDiskTBDataloader(
+                    dataset=dataset,
+                    train_indices=train_indices,
+                    val_indices=val_indices,
+                    test_indices=test_indices,
+                    **cfg.dataset.get("dataloader_params", {}),
+                )
+            else:
+                raise ValueError("Invalid task_level")
         else:
-            raise ValueError("Invalid task_level")
+            print("Splitting dataset into train/val/test (in memory)...")
+            dataset_train, dataset_val, dataset_test = (
+                preprocessor.load_dataset_splits(cfg.dataset.split_params)
+            )
+            # Prepare datamodule
+            log.info("Instantiating datamodule...")
+            if cfg.dataset.parameters.task_level in ["node", "graph"]:
+                datamodule = TBDataloader(
+                    dataset_train=dataset_train,
+                    dataset_val=dataset_val,
+                    dataset_test=dataset_test,
+                    **cfg.dataset.get("dataloader_params", {}),
+                )
+            else:
+                raise ValueError("Invalid task_level")
 
     else:
         preprocessor = PreProcessor(dataset, dataset_dir, transform_config)
+
+        print("Splitting dataset into train/val/test...")
         dataset_train, dataset_val, dataset_test = (
             preprocessor.load_dataset_splits(cfg.dataset.split_params)
         )
@@ -190,6 +208,8 @@ def run(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
 
     log.info("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))
+    # Add visualization callback
+    callbacks.append(MotionVisualizationCallback(num_samples=1))
 
     log.info("Instantiating loggers...")
     logger: list[Logger] = instantiate_loggers(cfg.get("logger"))

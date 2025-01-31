@@ -74,7 +74,7 @@ class PreProcessor(torch_geometric.data.InMemoryDataset):
         if self.transforms_applied:
             return self.root
         else:
-            return self.root + "/processed"
+            return os.path.join(self.root, "processed")
 
     @property
     def processed_file_names(self) -> str:

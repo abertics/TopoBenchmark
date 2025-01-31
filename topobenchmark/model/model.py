@@ -120,7 +120,6 @@ class TBModel(LightningModule):
 
         # Loss
         model_out = self.process_outputs(model_out=model_out, batch=batch)
-
         # Metric
         model_out = self.loss(model_out=model_out, batch=batch)
         self.evaluator.update(model_out)
@@ -247,12 +246,21 @@ class TBModel(LightningModule):
         """
         metrics_dict = self.evaluator.compute()
         for key in metrics_dict:
-            self.log(
-                f"{mode}/{key}",
-                metrics_dict[key],
-                prog_bar=True,
-                on_step=False,
-            )
+            if key == "mpjpe" and len(metrics_dict[key]) > 1:
+                for i, val in enumerate(metrics_dict[key]):
+                    self.log(
+                        f"{mode}/{key}@{i}",
+                        val,
+                        prog_bar=True,
+                        on_step=False,
+                    )
+            else:
+                self.log(
+                    f"{mode}/{key}",
+                    metrics_dict[key],
+                    prog_bar=True,
+                    on_step=False,
+                )
 
         # Reset evaluator for next epoch
         self.evaluator.reset()

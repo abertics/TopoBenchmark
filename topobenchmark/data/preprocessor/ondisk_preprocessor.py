@@ -1,16 +1,16 @@
-"""OnDisk preprocessor for datasets."""
+"""Preprocessor for datasets."""
 
 import json
 import os
 
 import hydra
 import numpy as np
+import torch
 import torch_geometric
 from torch_geometric.data import Data, OnDiskDataset
 
 from topobenchmark.data.utils import (
     ensure_serializable,
-    load_inductive_split_indices,
     load_inductive_splits,
     load_transductive_splits,
     make_hash,
@@ -264,12 +264,26 @@ class OnDiskPreProcessor(OnDiskDataset):
         tuple
             A tuple containing the train, validation, and test split indices.
         """
+        print(split_params)
         if split_params.get("learning_setting") != "inductive":
             raise NotImplementedError(
                 "Non-inductive splits are not yet implemented for OnDiskDatasets."
             )
 
-        return load_inductive_split_indices(self, split_params)
+        print(self.split_idx)
+        if split_params.split_type != "fixed" or not hasattr(
+            self, "split_idx"
+        ):
+            raise NotImplementedError(
+                f"split_type {split_params.split_type} not valid. Only 'fixed' is implemented.\
+            If 'fixed' is chosen, the dataset should have the attribute split_idx"
+            )
+
+        return (
+            self.split_idx["train"],
+            self.split_idx.get("valid", None),
+            self.split_idx.get("test", None),
+        )
 
     def __del__(self):
         """Close database connection when object is deleted."""

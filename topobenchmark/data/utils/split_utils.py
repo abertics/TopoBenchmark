@@ -156,6 +156,7 @@ def random_splitting(labels, parameters, global_data_seed=42):
     # Load the split
     split_path = os.path.join(split_dir, f"{fold}.npz")
     split_idx = np.load(split_path)
+    print("HI", split_idx)
 
     # Check that all nodes/graph have been assigned to some split
     assert (
@@ -194,23 +195,26 @@ def assing_train_val_test_mask_to_graphs(dataset, split_idx):
         graph = dataset[i]
         assigned = False
         if i in split_idx["train"]:
-            graph.train_mask = torch.Tensor([1]).long()
-            graph.val_mask = torch.Tensor([0]).long()
-            graph.test_mask = torch.Tensor([0]).long()
+            if not hasattr(graph, "train_mask"):
+                graph.train_mask = torch.Tensor([1]).long()
+                graph.val_mask = torch.Tensor([0]).long()
+                graph.test_mask = torch.Tensor([0]).long()
             data_train_lst.append(graph)
             assigned = True
 
         if i in split_idx["valid"]:
-            graph.train_mask = torch.Tensor([0]).long()
-            graph.val_mask = torch.Tensor([1]).long()
-            graph.test_mask = torch.Tensor([0]).long()
+            if not hasattr(graph, "train_mask"):
+                graph.train_mask = torch.Tensor([0]).long()
+                graph.val_mask = torch.Tensor([1]).long()
+                graph.test_mask = torch.Tensor([0]).long()
             data_val_lst.append(graph)
             assigned = True
 
         if i in split_idx["test"]:
-            graph.train_mask = torch.Tensor([0]).long()
-            graph.val_mask = torch.Tensor([0]).long()
-            graph.test_mask = torch.Tensor([1]).long()
+            if not hasattr(graph, "train_mask"):
+                graph.train_mask = torch.Tensor([0]).long()
+                graph.val_mask = torch.Tensor([0]).long()
+                graph.test_mask = torch.Tensor([1]).long()
             data_test_lst.append(graph)
             assigned = True
         if not assigned:
@@ -300,9 +304,9 @@ def load_inductive_splits(dataset, parameters):
     # Handle OnDiskDataset case
     if hasattr(dataset, "dataset"):
         # Get total number of rows from SQLite database
+        # dataset.cursor.execute("SELECT COUNT(*) FROM data")
         total_rows = len(dataset)
         # I don't think the labels matter, but rather how many pairs there are...
-        # TODO: Don't think this assumption is legal
         labels = np.arange(total_rows)
     else:
         labels = np.array(
@@ -311,6 +315,7 @@ def load_inductive_splits(dataset, parameters):
 
     if parameters.split_type == "random":
         split_idx = random_splitting(labels, parameters)
+        print(split_idx)
 
     elif parameters.split_type == "k-fold":
         split_idx = k_fold_split(labels, parameters)

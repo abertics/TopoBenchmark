@@ -125,6 +125,54 @@ class TBModel(LightningModule):
         self.evaluator.update(model_out)
 
         return model_out
+    
+    def model_autoregressive_step(self, batch: Data) -> dict:
+        r"""Perform a single autoregressive model step on a batch of data.
+
+        Parameters
+        ----------
+        batch : torch_geometric.data.Data
+            Batch object containing the batched data.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the model output and the loss.
+        """
+
+        batch["model_state"] = self.state_str
+
+        model_out = self.feature_encoder(batch)
+        model_out = self.forward(model_out)
+        if self.readout is not None:
+            model_out = self.readout(model_out=model_out, batch=batch)
+        first_10_frames = model_out[:10]
+
+        # put model_out into the batch
+        model_out = self.feature_encoder(model_out)
+        model_out = self.forward(model_out)
+        if self.readout is not None:
+            model_out = self.readout(model_out=model_out, batch=batch)
+        second_10_frames = model_out[:10]
+
+        # get 5 more frames
+        model_out = self.feature_encoder(batch)
+        model_out = self.forward(model_out)
+        if self.readout is not None:
+            model_out = self.readout(model_out=model_out, batch=batch)
+        next_5_frames = model_out[:5]
+
+        # put the outputs into the batch
+        model_out[:10] = first_10_frames
+        model_out[10:20] = second_10_frames
+        model_out[20:25] = next_5_frames
+
+        # Loss
+        model_out = self.process_outputs(model_out=model_out, batch=batch)
+        # Metric
+        model_out = self.loss(model_out=model_out, batch=batch)
+        self.evaluator.update(model_out)
+        return model_out
 
     def training_step(self, batch: Data, batch_idx: int) -> torch.Tensor:
         r"""Perform a single training step on a batch of data.
@@ -191,7 +239,7 @@ class TBModel(LightningModule):
             The index of the current batch.
         """
         self.state_str = "Test"
-        model_out = self.model_step(batch)
+        model_out = self.model_autoregressive_step(batch)
 
         # Log loss
         self.log(

@@ -14,7 +14,7 @@ class MeanPerJointPositionError(Metric):
         super().__init__(**kwargs)
 
         # Match PoseEvaluator frames
-        self.frames_to_evaluate = [2, 4, 8, 10]
+        self.frames_to_evaluate = [2, 4, 8, 10, 12, 14, 18, 22, 25]
 
         # Initialize states for accumulating errors - one for each frame count
         self.add_state(

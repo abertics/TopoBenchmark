@@ -3,6 +3,7 @@
 from torchmetrics import MetricCollection
 
 from topobenchmark.evaluator import METRICS, AbstractEvaluator
+from topobenchmark.evaluator.metrics.MeanPerJointPositionError import MeanPerJointPositionError  # Add this import
 
 
 class TBEvaluator(AbstractEvaluator):
@@ -61,7 +62,7 @@ class TBEvaluator(AbstractEvaluator):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(task={self.task}, metrics={self.metrics})"
 
-    def update(self, model_out: dict):
+    def update(self, model_out: dict, state_str: str = "Train"):
         r"""Update the metrics with the model output.
 
         Parameters
@@ -72,6 +73,8 @@ class TBEvaluator(AbstractEvaluator):
             The model predictions.
             - labels : torch.Tensor
             The ground truth labels.
+        state_str : str
+            The model state string. Default is "Train". Other options are "Test" and "Validation".
 
         Raises
         ------
@@ -82,14 +85,16 @@ class TBEvaluator(AbstractEvaluator):
         target = model_out["labels"].cpu()
 
         if self.task == "regression":
-            self.metrics.update(preds, target.unsqueeze(1))
-
+            for _, metric in self.metrics.items():
+                if metric.__class__.__name__ == "MeanPerJointPositionError":
+                    metric.update(preds, target.unsqueeze(1), state_str)
+                else:
+                    metric.update(preds, target.unsqueeze(1))
         elif (
             self.task == "classification"
             or self.task == "multilabel classification"
         ):
             self.metrics.update(preds, target)
-
         else:
             raise ValueError(f"Invalid task {self.task}")
 

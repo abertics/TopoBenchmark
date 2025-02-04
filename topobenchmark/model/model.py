@@ -141,37 +141,54 @@ class TBModel(LightningModule):
         """
 
         batch["model_state"] = self.state_str
-
+        original_sequence = batch["x"].reshape(-1, 50, 22, 3)
         model_out = self.feature_encoder(batch)
         model_out = self.forward(model_out)
         if self.readout is not None:
             model_out = self.readout(model_out=model_out, batch=batch)
-        first_10_frames = model_out[:10]
+
+        out_frames = model_out["logits"].reshape(-1, 50, 22, 3)
+        first_10_frames = out_frames[:, :10, :, :]
+
+        # shift the original sequence by 10 frames, add the first 10 frames to the end
+        shifted_sequence = torch.cat([original_sequence[:, 10:, :, :], first_10_frames], dim=1)
+        
+        batch["x"] = shifted_sequence.reshape(-1, 1)
+        # batch["batch_0"] = shifted_sequence.reshape(-1)
 
         # put model_out into the batch
-        model_out = self.feature_encoder(model_out)
+        model_out = self.feature_encoder(batch)
         model_out = self.forward(model_out)
         if self.readout is not None:
             model_out = self.readout(model_out=model_out, batch=batch)
-        second_10_frames = model_out[:10]
+        out_frames = model_out["logits"].reshape(-1, 50, 22, 3)
+        second_10_frames = out_frames[:, :10, :, :]
+
+        shifted_sequence = torch.cat([shifted_sequence[:, 10:, :, :], second_10_frames], dim=1)
+
+        batch["x"] = shifted_sequence.reshape(-1, 1)
+        # batch["batch_0"] = shifted_sequence.reshape(-1)
 
         # get 5 more frames
         model_out = self.feature_encoder(batch)
         model_out = self.forward(model_out)
         if self.readout is not None:
             model_out = self.readout(model_out=model_out, batch=batch)
-        next_5_frames = model_out[:5]
+        
+        out_frames = model_out["logits"].reshape(-1, 50, 22, 3)
+        next_5_frames = out_frames[:, :5, :, :]
 
         # put the outputs into the batch
-        model_out[:10] = first_10_frames
-        model_out[10:20] = second_10_frames
-        model_out[20:25] = next_5_frames
+        out_frames[:, :10, :, :] = first_10_frames
+        out_frames[:, 10:20, :, :] = second_10_frames
+        out_frames[:, 20:25, :, :] = next_5_frames        
 
+        model_out["logits"] = out_frames.reshape(-1, 1)
         # Loss
         model_out = self.process_outputs(model_out=model_out, batch=batch)
         # Metric
         model_out = self.loss(model_out=model_out, batch=batch)
-        self.evaluator.update(model_out)
+        self.evaluator.update(model_out, state_str="Test")
         return model_out
 
     def training_step(self, batch: Data, batch_idx: int) -> torch.Tensor:
@@ -284,7 +301,7 @@ class TBModel(LightningModule):
 
         return model_out
 
-    def log_metrics(self, mode=None):
+    def log_metrics(self, mode: str = None):
         r"""Log metrics.
 
         Parameters

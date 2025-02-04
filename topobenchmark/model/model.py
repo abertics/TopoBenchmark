@@ -126,70 +126,148 @@ class TBModel(LightningModule):
 
         return model_out
     
-    def model_autoregressive_step(self, batch: Data) -> dict:
-        r"""Perform a single autoregressive model step on a batch of data.
-
+    def _run_single_step(self, batch: Data) -> tuple[torch.Tensor, dict]:
+        """Run a single forward pass through the model pipeline.
+        
         Parameters
         ----------
-        batch : torch_geometric.data.Data
-            Batch object containing the batched data.
+        batch : Data
+            The input batch data
+            
+        Returns
+        -------
+        tuple[torch.Tensor, dict]
+            The output frames tensor and the model output dictionary
+        """
+        model_out = self.feature_encoder(batch)
+        model_out = self.forward(model_out)
+        if self.readout is not None:
+            model_out = self.readout(model_out=model_out, batch=batch)
+        return model_out["logits"].reshape(-1, 50, 22, 3), model_out
 
+    def _get_next_sequence(self, current_sequence: torch.Tensor, new_frames: torch.Tensor) -> torch.Tensor:
+        """Create the next input sequence by shifting and concatenating frames.
+        
+        Parameters
+        ----------
+        current_sequence : torch.Tensor
+            Current sequence of shape (batch, seq_len, joints, dims)
+        new_frames : torch.Tensor
+            New frames to append of shape (batch, n_frames, joints, dims)
+            
+        Returns
+        -------
+        torch.Tensor
+            Updated sequence with new frames appended
+        """
+        return torch.cat([current_sequence[:, new_frames.shape[1]:, :, :], new_frames], dim=1)
+
+    def model_autoregressive_step(self, batch: Data) -> dict:
+        """Perform autoregressive prediction of motion frames.
+        
+        Parameters
+        ----------
+        batch : Data
+            Input batch containing the initial sequence
+            
         Returns
         -------
         dict
-            Dictionary containing the model output and the loss.
+            Model outputs including predictions and loss
         """
-
         batch["model_state"] = self.state_str
-        original_sequence = batch["x"].reshape(-1, 50, 22, 3)
-        model_out = self.feature_encoder(batch)
-        model_out = self.forward(model_out)
-        if self.readout is not None:
-            model_out = self.readout(model_out=model_out, batch=batch)
-
-        out_frames = model_out["logits"].reshape(-1, 50, 22, 3)
-        first_10_frames = out_frames[:, :10, :, :]
-
-        # shift the original sequence by 10 frames, add the first 10 frames to the end
-        shifted_sequence = torch.cat([original_sequence[:, 10:, :, :], first_10_frames], dim=1)
         
-        batch["x"] = shifted_sequence.reshape(-1, 1)
-        # batch["batch_0"] = shifted_sequence.reshape(-1)
-
-        # put model_out into the batch
-        model_out = self.feature_encoder(batch)
-        model_out = self.forward(model_out)
-        if self.readout is not None:
-            model_out = self.readout(model_out=model_out, batch=batch)
-        out_frames = model_out["logits"].reshape(-1, 50, 22, 3)
-        second_10_frames = out_frames[:, :10, :, :]
-
-        shifted_sequence = torch.cat([shifted_sequence[:, 10:, :, :], second_10_frames], dim=1)
-
-        batch["x"] = shifted_sequence.reshape(-1, 1)
-        # batch["batch_0"] = shifted_sequence.reshape(-1)
-
-        # get 5 more frames
-        model_out = self.feature_encoder(batch)
-        model_out = self.forward(model_out)
-        if self.readout is not None:
-            model_out = self.readout(model_out=model_out, batch=batch)
+        # Initialize
+        frame_sequence = batch["x"].reshape(-1, 50, 22, 3)
+        generated_frames = []
+        frame_counts = [10, 10, 5]  # Number of frames to generate in each step
         
-        out_frames = model_out["logits"].reshape(-1, 50, 22, 3)
-        next_5_frames = out_frames[:, :5, :, :]
-
-        # put the outputs into the batch
-        out_frames[:, :10, :, :] = first_10_frames
-        out_frames[:, 10:20, :, :] = second_10_frames
-        out_frames[:, 20:25, :, :] = next_5_frames        
-
+        # Generate frames autoregressively
+        for n_frames in frame_counts:
+            # Run model
+            out_frames, model_out = self._run_single_step(batch)
+            new_frames = out_frames[:, :n_frames, :, :]
+            generated_frames.append(new_frames)
+            
+            # Update sequence for next iteration
+            frame_sequence = self._get_next_sequence(frame_sequence, new_frames)
+            batch["x"] = frame_sequence.reshape(-1, 1)
+        
+        # Combine all generated frames
+        out_frames = torch.zeros_like(frame_sequence)
+        current_idx = 0
+        for frames in generated_frames:
+            n_frames = frames.shape[1]
+            out_frames[:, current_idx:current_idx + n_frames, :, :] = frames
+            current_idx += n_frames
+        
+        # Final processing
         model_out["logits"] = out_frames.reshape(-1, 1)
-        # Loss
         model_out = self.process_outputs(model_out=model_out, batch=batch)
-        # Metric
         model_out = self.loss(model_out=model_out, batch=batch)
         self.evaluator.update(model_out, state_str="Test")
-        return model_out
+        
+        return model_out    
+    # def model_autoregressive_step(self, batch: Data) -> dict:
+    #     r"""Perform a single autoregressive model step on a batch of data.
+
+    #     Parameters
+    #     ----------
+    #     batch : torch_geometric.data.Data
+    #         Batch object containing the batched data.
+
+    #     Returns
+    #     -------
+    #     dict
+    #         Dictionary containing the model output and the loss.
+    #     """
+
+    #     batch["model_state"] = self.state_str
+
+    #     original_sequence = batch["x"].reshape(-1, 50, 22, 3)
+
+    #     model_out = self.feature_encoder(batch)
+    #     model_out = self.forward(model_out)
+    #     if self.readout is not None:
+    #         model_out = self.readout(model_out=model_out, batch=batch)
+
+    #     out_frames = model_out["logits"].reshape(-1, 50, 22, 3)
+    #     first_10_frames = out_frames[:, :10, :, :]
+    #     shifted_sequence = torch.cat([original_sequence[:, 10:, :, :], first_10_frames], dim=1)
+    #     batch["x"] = shifted_sequence.reshape(-1, 1)
+
+    #     # put model_out into the batch
+    #     model_out = self.feature_encoder(batch)
+    #     model_out = self.forward(model_out)
+    #     if self.readout is not None:
+    #         model_out = self.readout(model_out=model_out, batch=batch)
+
+    #     out_frames = model_out["logits"].reshape(-1, 50, 22, 3)
+    #     second_10_frames = out_frames[:, :10, :, :]
+    #     shifted_sequence = torch.cat([shifted_sequence[:, 10:, :, :], second_10_frames], dim=1)
+    #     batch["x"] = shifted_sequence.reshape(-1, 1)
+
+    #     # get 5 more frames
+    #     model_out = self.feature_encoder(batch)
+    #     model_out = self.forward(model_out)
+    #     if self.readout is not None:
+    #         model_out = self.readout(model_out=model_out, batch=batch)
+        
+    #     out_frames = model_out["logits"].reshape(-1, 50, 22, 3)
+    #     next_5_frames = out_frames[:, :5, :, :]
+
+    #     # put the outputs into the batch
+    #     out_frames[:, :10, :, :] = first_10_frames
+    #     out_frames[:, 10:20, :, :] = second_10_frames
+    #     out_frames[:, 20:25, :, :] = next_5_frames        
+
+    #     model_out["logits"] = out_frames.reshape(-1, 1)
+    #     # Loss
+    #     model_out = self.process_outputs(model_out=model_out, batch=batch)
+    #     # Metric
+    #     model_out = self.loss(model_out=model_out, batch=batch)
+    #     self.evaluator.update(model_out, state_str="Test")
+    #     return model_out
 
     def training_step(self, batch: Data, batch_idx: int) -> torch.Tensor:
         r"""Perform a single training step on a batch of data.
